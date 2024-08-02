@@ -93,6 +93,7 @@ const char* reboot_Topic="reboot";
 char msg[MSG_BUFFER_SIZE];
 
 RTC_DS1307 DS1307_RTC;
+DateTime nowRTC;
 char Week_days[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
 static const char* root_ca PROGMEM = R"EOF(
@@ -120,13 +121,15 @@ void connectMQTT() {
         client.subscribe(led_Topic);
         client.subscribe(temp_humid_Topic);
         client.subscribe(reboot_Topic);
-        delay(1500);
+        // delay(1500);
+        vTaskDelay(1500 / portTICK_PERIOD_MS);
         client.publish("lastWillTopic","Online");
       } else {
         Serial.print("failed, rc=");
         Serial.print(client.state());
         Serial.println(" try again in 3 seconds");
-        delay(3000);
+        // delay(3000);
+        vTaskDelay(3000 / portTICK_PERIOD_MS);
     }
   }
 }
@@ -201,7 +204,8 @@ void handleSerialCommunication() {
       } else {
         serialMessage += command; 
       }
-      delay(1); 
+      // delay(1); 
+      vTaskDelay(1 / portTICK_PERIOD_MS);
     }
   }
 }
@@ -246,10 +250,12 @@ void connectEthernet() {
   macCharArrayToBytes(ETHERNET_MAC, mac);
   Ethernet.init(ETHERNET_CS_PIN);
   Ethernet.begin(mac,500,500);
-  delay(1000);
+  // delay(1000);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
   while(Ethernet.linkStatus()!=LinkON){
     Serial.print(".");
-    delay(1000);
+    // delay(1000);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     ethRetry++;
     if(ethRetry>2){
       ethRetry=0;
@@ -338,7 +344,8 @@ void configModeCallback(WiFiManager *myWiFiManager) {
     macCharArrayToBytes(ETHERNET_MAC, mac);
     Ethernet.init(ETHERNET_CS_PIN);
     // Ethernet.begin(mac,500,500);
-    delay(1000);
+    // delay(1000);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     // Serial.print("Ethernet IP is: ");
     // Serial.println(Ethernet.localIP());
     ethConnectRetry++;
@@ -393,7 +400,8 @@ void setupWiFi(){
 void reconnectWiFi(){
   WiFi.begin(ssid, pass);
   while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
+    // delay(1000);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     Serial.print(".");
     if(wifiRetry>10){
       wifiRetry=0;
@@ -461,8 +469,9 @@ void TaskBlE(void *pvParameters) {
 void TaskRTC(void *pvParameters) {
   DS1307_RTC.begin();
   DS1307_RTC.adjust(DateTime(F(__DATE__), F(__TIME__)));
+
   for (;;) {
-    DateTime nowRTC = DS1307_RTC.now();
+    nowRTC = DS1307_RTC.now();
 
     Serial.print(nowRTC.year(), DEC);
     Serial.print('/');
@@ -478,22 +487,53 @@ void TaskRTC(void *pvParameters) {
     Serial.print(':');
     Serial.print(nowRTC.second(), DEC);
     Serial.println();
-    vTaskDelay(3000 / portTICK_PERIOD_MS); // Small delay to avoid button bouncing
+    vTaskDelay(1000 / portTICK_PERIOD_MS); // Small delay to avoid button bouncing
   
   }
 }
 
+void TaskAdjustRTC(void *pvParameters){
+  for(;;){
+    nowRTC = DS1307_RTC.now();
+      // Kiểm tra xem có dữ liệu từ Serial Monitor không
+    if (Serial.available() > 0) {
+      String inputString = Serial.readStringUntil('\n'); // Đọc chuỗi cho đến khi gặp '\n'
+      inputString.trim(); // Loại bỏ các ký tự trắng ở đầu và cuối chuỗi
+
+      // Kiểm tra định dạng chuỗi giờ:phút:giây
+      int hour, minute, second;
+      if (sscanf(inputString.c_str(), "%d:%d:%d", &hour, &minute, &second) == 3) {
+        // Nếu định dạng đúng, cập nhật thời gian RTC
+        DateTime newTime(nowRTC.year(), nowRTC.month(), nowRTC.day(), hour, minute, second+1);
+        DS1307_RTC.adjust(newTime);
+        Serial.println("Thoi gian RTC da duoc dieu chinh.");
+      } else {
+        Serial.println("Dinh dang khong hop le. Vui long nhap theo dinh dang gio:phut:giay (VD: 12:07:08).");
+      }
+    }
+  }
+
+}
 
 
 void setup() {
   Serial.begin(115200);
-  delay(10);
+  // delay(10);
+  vTaskDelay(10 / portTICK_PERIOD_MS);
   dht.begin();
 
   //RTC
   xTaskCreate(
     TaskRTC,
     "RTC Task",
+    2048 ,
+    NULL,
+    2,
+    NULL
+  );
+  xTaskCreate(
+    TaskAdjustRTC,
+    "RTC Adjustment Task",
     2048 ,
     NULL,
     2,
@@ -519,7 +559,7 @@ void setup() {
     "Task Button Control Led",   // Name for humans
     2048,  // Stack size in bytes
     NULL,
-    3,  // Priority
+    2,  // Priority
     NULL
   );
   setupWiFi();
@@ -536,7 +576,7 @@ void setup() {
 
 void loop() {
   if(WiFi.status() != WL_CONNECTED && ethConnectRetry<2){
-    Serial.println("Wifi disconnected, connecting to Ethernet");
+    Serial.println("Wifi disconnected, connecting to Ethernet...");
     connectEthernet();
     ethConnectRetry++;
   }
@@ -562,12 +602,14 @@ void loop() {
     } else {
       Serial.println("Mat ket noi server");
       if(Ethernet.linkStatus() == LinkON){
+        Serial.println("Ethernet connected");
         client.setClient(ethClient);
         client.setKeepAlive(1); 
         ethClient.setTimeout(1000); 
         client.setServer(mqtt_server, mqtt_port);
         client.setCallback(callbackMQTT);
       }else if(WiFi.status() == WL_CONNECTED){
+        Serial.println("WiFi connected");
         client.setClient(wifiClient);
         client.setKeepAlive(1); 
         wifiClient.setTimeout(1000); 
@@ -578,6 +620,8 @@ void loop() {
       connectMQTT();
     }
   }
-  delay(300);
+  // Serial.println("Free heap: " + String(ESP.getFreeHeap()));
+  vTaskDelay(300 / portTICK_PERIOD_MS);
+  // delay(300);
 }
 
