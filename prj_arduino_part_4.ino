@@ -86,7 +86,7 @@ WiFiClient wifiClient;
 EthernetClient ethClient;
 PubSubClient client;
 const char* led_Topic = "controlLed";
-const char* temp_humid_Topic = "TempAndHum";
+const char* temp_humid_Topic = "home/sensor/TemperatureandHumid";
 const char* reboot_Topic="reboot";
 
 #define MSG_BUFFER_SIZE (50)
@@ -601,21 +601,21 @@ void loop() {
       client.publish("dhtHum", String(humid).c_str());
     } else {
       Serial.println("Mat ket noi server");
-      if(Ethernet.linkStatus() == LinkON){
-        Serial.println("Ethernet connected");
-        client.setClient(ethClient);
-        client.setKeepAlive(1); 
-        ethClient.setTimeout(1000); 
-        client.setServer(mqtt_server, mqtt_port);
-        client.setCallback(callbackMQTT);
-      }else if(WiFi.status() == WL_CONNECTED){
+      if(WiFi.status() == WL_CONNECTED){
         Serial.println("WiFi connected");
         client.setClient(wifiClient);
         client.setKeepAlive(1); 
         wifiClient.setTimeout(1000); 
         client.setServer(mqtt_server, mqtt_port);
         client.setCallback(callbackMQTT);
-      }
+      }else if(Ethernet.linkStatus() == LinkON){
+        Serial.println("Ethernet connected");
+        client.setClient(ethClient);
+        client.setKeepAlive(1); 
+        ethClient.setTimeout(1000); 
+        client.setServer(mqtt_server, mqtt_port);
+        client.setCallback(callbackMQTT);
+      } 
 
       connectMQTT();
     }
@@ -624,4 +624,3 @@ void loop() {
   vTaskDelay(300 / portTICK_PERIOD_MS);
   // delay(300);
 }
-
