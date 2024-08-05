@@ -456,12 +456,13 @@ void TaskButtonLed(void *pvParameters) {
 }
 
 // Task BLE
-void TaskBlE(void *pvParameters) {
+void TaskBLE(void *pvParameters) {
+
   for (;;) {
     handleBluetoothCommunication(); 
     handleSerialCommunication(); 
     sendDHTValuesBLE();
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    // vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 
@@ -512,7 +513,6 @@ void TaskAdjustRTC(void *pvParameters){
       }
     }
   }
-
 }
 
 
@@ -532,9 +532,23 @@ void setup() {
     2,  // Priority
     NULL
   );
-
-  setupWiFi();
   
+  setupWiFi();
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
+
+  SerialBT.begin("ESP32_Bluetooth"); 
+  Serial.println("The device started, now you can pair it with Bluetooth!"); 
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+  //BLE
+  xTaskCreate(
+    TaskBLE,
+    "Ble Task",
+    2048 ,
+    NULL,
+    2,
+    NULL
+  );
   //RTC
   xTaskCreate(
     TaskRTC,
@@ -553,17 +567,6 @@ void setup() {
     NULL
   );
 
-  //BLE
-  SerialBT.begin("ESP32_Bluetooth"); 
-  Serial.println("The device started, now you can pair it with Bluetooth!"); 
-  xTaskCreate(
-    TaskBlE,
-    "Ble Task",
-    2048 ,
-    NULL,
-    2,
-    NULL
-  );
 
   if(WiFi.status() == WL_CONNECTED){
     client.setClient(wifiClient);
@@ -573,7 +576,6 @@ void setup() {
     client.setCallback(callbackMQTT);
     connectMQTT();
   }
-
 }
 
 void loop() {
