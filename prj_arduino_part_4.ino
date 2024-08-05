@@ -429,7 +429,7 @@ void reconnectWiFi(){
 void TaskButtonLed(void *pvParameters) {
   // button control LED
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-  pinMode(LED_PIN, OUTPUT);
+
   digitalWrite(LED_PIN, LOW); // Initialize LED to ON
   button_state = digitalRead(BUTTON_PIN);
   for(;;) {
@@ -461,7 +461,7 @@ void TaskBlE(void *pvParameters) {
     handleBluetoothCommunication(); 
     handleSerialCommunication(); 
     sendDHTValuesBLE();
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 
@@ -518,10 +518,23 @@ void TaskAdjustRTC(void *pvParameters){
 
 void setup() {
   Serial.begin(115200);
+  pinMode(LED_PIN, OUTPUT);
   // delay(10);
   vTaskDelay(10 / portTICK_PERIOD_MS);
   dht.begin();
 
+  // Create task for LED blinking
+  xTaskCreate(
+    TaskButtonLed,
+    "Task Button Control Led",   // Name for humans
+    2048,  // Stack size in bytes
+    NULL,
+    2,  // Priority
+    NULL
+  );
+
+  setupWiFi();
+  
   //RTC
   xTaskCreate(
     TaskRTC,
@@ -552,17 +565,6 @@ void setup() {
     NULL
   );
 
-
-  // Create task for LED blinking
-  xTaskCreate(
-    TaskButtonLed,
-    "Task Button Control Led",   // Name for humans
-    2048,  // Stack size in bytes
-    NULL,
-    2,  // Priority
-    NULL
-  );
-  setupWiFi();
   if(WiFi.status() == WL_CONNECTED){
     client.setClient(wifiClient);
     client.setKeepAlive(1); 
